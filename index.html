@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mock Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Nunito', sans-serif; background-color: #f0f4f8; }
+        h1, h2, h3, .brand { font-family: 'Baloo 2', cursive; }
+        .drop-zone { border: 2px dashed #cbd5e1; transition: all 0.2s ease; }
+        .drop-zone.dragover { border-color: #6366f1; background-color: #eef2ff; }
+        .handwritten { color: #2563eb; font-style: italic; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 0.8s linear infinite; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div class="max-w-4xl mx-auto px-6 py-4 flex items-center">
+            <h1 class="brand text-2xl text-indigo-900 m-0 tracking-wide">Mock Converter</h1>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-2xl mx-auto w-full px-6 py-10">
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mb-8">
+
+            <!-- API Key Input -->
+            <div class="mb-6">
+                <label for="api_key" class="block text-sm font-bold text-gray-700 mb-2">OpenAI API Key <span class="text-red-500">*</span></label>
+                <input type="password" id="api_key" placeholder="sk-..." class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow bg-gray-50">
+                <p class="text-xs text-gray-500 mt-2">Your key is sent directly to the server for processing and is never stored.</p>
+            </div>
+
+            <!-- Drop Zone -->
+            <div id="drop_zone" class="drop-zone rounded-2xl flex flex-col items-center justify-center py-16 px-4 cursor-pointer bg-gray-50 hover:bg-gray-100 mb-6">
+                <svg class="w-16 h-16 text-indigo-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                <h3 class="text-xl font-semibold text-gray-800 mb-1 text-center">Drag and Drop Files or Click to Open</h3>
+                <p class="text-sm text-gray-500 text-center">Supports PDF, PNG, and JPG</p>
+                <input type="file" id="file_input" multiple accept=".pdf,.png,.jpg,.jpeg" class="hidden">
+            </div>
+
+            <!-- Upload Button -->
+            <div class="flex items-center justify-end mt-4">
+                <button id="upload_btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-xl transition-colors shadow-sm">
+                    Convert Mocks
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Container -->
+        <div id="results_container" class="space-y-6"></div>
+    </main>
+
+    <script>
+        const dropZone = document.getElementById('drop_zone');
+        const fileInput = document.getElementById('file_input');
+        const uploadBtn = document.getElementById('upload_btn');
+        const resultsContainer = document.getElementById('results_container');
+        let selectedFiles = [];
+
+        const DROP_DEFAULT = `<svg class="w-16 h-16 text-indigo-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><h3 class="text-xl font-semibold text-gray-800 mb-1 text-center">Drag and Drop Files or Click to Open</h3><p class="text-sm text-gray-500 text-center">Supports PDF, PNG, and JPG</p>`;
+
+        // Drag and Drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        function handleFiles(files) {
+            selectedFiles = Array.from(files);
+            dropZone.innerHTML = `<h3 class="text-xl font-semibold text-indigo-600 mb-1 text-center">${selectedFiles.length} file(s) ready</h3><p class="text-sm text-gray-500 text-center">Click convert to begin</p>`;
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // Build the on-screen transcription and a plain-text version for copying.
+        function renderResult(cardId, data) {
+            let html = '';
+            let plain = '';
+            data.pages.forEach((blocks, pageIdx) => {
+                if (pageIdx > 0) {
+                    html += `<hr class="my-4 border-gray-200"><p class="text-xs text-gray-400 mb-2">Page ${pageIdx + 1}</p>`;
+                    plain += `\n\n--- Page ${pageIdx + 1} ---\n`;
+                }
+                blocks.forEach(block => {
+                    const text = block.text || '';
+                    const cls = block.type === 'handwritten' ? 'handwritten' : 'text-gray-800';
+                    html += `<p class="${cls} mb-2 whitespace-pre-wrap">${escapeHtml(text)}</p>`;
+                    plain += text + '\n';
+                });
+            });
+            const card = document.getElementById(cardId);
+            card.querySelector('[data-role="body"]').innerHTML = html;
+            const copyBtn = card.querySelector('[data-role="copy"]');
+            copyBtn.classList.remove('hidden');
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(plain.trim()).then(() => {
+                    copyBtn.textContent = 'Copied!';
+                    setTimeout(() => { copyBtn.textContent = 'Copy text'; }, 1500);
+                });
+            };
+        }
+
+        function createCard(filename) {
+            const cardId = 'card_' + Math.random().toString(36).slice(2);
+            const html = `
+                <div id="${cardId}" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="font-semibold text-gray-700 truncate w-3/4">${escapeHtml(filename)}</span>
+                        <button data-role="copy" class="hidden text-sm font-bold text-indigo-600 hover:underline">Copy text</button>
+                    </div>
+                    <div data-role="body" class="text-sm text-gray-500 flex items-center">
+                        <svg class="spinner w-4 h-4 mr-2 text-indigo-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                        Transcribing… this can take a little while for multi-page PDFs.
+                    </div>
+                </div>`;
+            resultsContainer.insertAdjacentHTML('afterbegin', html);
+            return cardId;
+        }
+
+        function showError(cardId, message) {
+            document.getElementById(cardId).querySelector('[data-role="body"]').innerHTML =
+                `<span class="text-red-500">Error: ${escapeHtml(message)}</span>`;
+        }
+
+        uploadBtn.addEventListener('click', async () => {
+            const apiKey = document.getElementById('api_key').value.trim();
+            if (!apiKey) { alert("Please enter your OpenAI API key."); return; }
+            if (selectedFiles.length === 0) { alert("Please select at least one file."); return; }
+
+            const files = selectedFiles.slice();
+            selectedFiles = [];
+            dropZone.innerHTML = DROP_DEFAULT;
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = "Converting…";
+
+            // Process one file per request, sequentially, so a big PDF doesn't
+            // have to share a single function's time budget with the others.
+            for (const file of files) {
+                const cardId = createCard(file.name);
+                const formData = new FormData();
+                formData.append('api_key', apiKey);
+                formData.append('file', file);
+                try {
+                    const res = await fetch('/convert', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if (res.ok) {
+                        renderResult(cardId, data);
+                    } else {
+                        showError(cardId, data.error || `Request failed (${res.status})`);
+                    }
+                } catch (err) {
+                    showError(cardId, "Network error or the request timed out. Large PDFs may exceed the time limit — try fewer pages.");
+                }
+            }
+
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = "Convert Mocks";
+        });
+    </script>
+</body>
+</html>
